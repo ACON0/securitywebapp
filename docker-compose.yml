@@ -1,0 +1,23 @@
+version: '3'
+
+services:
+  backend:
+    build: ./fastapi-backend
+    ports:
+      - "8000:8000"
+    devices:
+      - "/dev/video0:/dev/video0"
+    environment:
+      - PORT=8000
+      - SECRET_KEY=5f2e6bfecdbf340a40c9b2994d0342f21f47c3cdbf3b7b2f16abf39c4893e1f1
+      - ALGORITHM=HS256
+    privileged: true
+
+  frontend:
+    build: ./react-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend

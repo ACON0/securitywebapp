@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+opencv-python
+aiofiles
+python-multipart
+pyjwt
+passlib
