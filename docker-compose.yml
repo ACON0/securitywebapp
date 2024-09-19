@@ -11,7 +11,10 @@ services:
       - PORT=8000
       - SECRET_KEY=5f2e6bfecdbf340a40c9b2994d0342f21f47c3cdbf3b7b2f16abf39c4893e1f1
       - ALGORITHM=HS256
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/securitydb
     privileged: true
+    depends_on:
+      - postgres  # ensure postgres starts first
 
   frontend:
     build: ./react-frontend
@@ -21,3 +24,17 @@ services:
       - REACT_APP_BACKEND_URL=http://backend:8000
     depends_on:
       - backend
+  
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: securitydb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:

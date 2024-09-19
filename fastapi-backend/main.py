@@ -2,8 +2,10 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from passlib.context import CryptContext
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import jwt
 import cv2
 import os
@@ -18,14 +20,6 @@ app = FastAPI()
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Fake user database (replace this with a real database)
-fake_users_db = {
-    "test@example.com": {
-        "email": "test@example.com",
-        "hashed_password": pwd_context.hash("password"),
-    }
-}
-
 # OAuth2 setup
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -38,16 +32,52 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+#Database Configuration
+
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/securitydb")
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# Create User Model
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+
+Base.metadata.create_all(bind=engine)
+
+#Gets db session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Function to get user by email
+def get_user(db: Session, email: str):
+    return db.query(User).filter(User.email == email).first()
+
+# Function to create a new user
+def create_user(db: Session, email: str, password: str):
+    hashed_password = pwd_context.hash(password)
+    db_user = User(email=email, hashed_password=hashed_password)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
 # Function to verify password
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
 # Function to authenticate user
-def authenticate_user(fake_db, email: str, password: str):
-    user = fake_db.get(email)
-    if not user:
-        return False
-    if not verify_password(password, user["hashed_password"]):
+def authenticate_user(db: Session, email: str, password: str):
+    user = get_user(db, email)
+    if not user or not verify_password(password, user.hashed_password):
         return False
     return user
 
@@ -55,9 +85,9 @@ def authenticate_user(fake_db, email: str, password: str):
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -78,17 +108,26 @@ def gen_frames():
 
 # Token endpoint for login
 @app.post("/token")
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = authenticate_user(fake_users_db, form_data.username, form_data.password)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user["email"]}, expires_delta=access_token_expires
+        data={"sub": user.email}, expires_delta=access_token_expires
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/register")
+async def register(email: str, password: str, db: Session = Depends(get_db)):
+    user = get_user(db, email)
+    if user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    create_user(db, email, password)
+    return {"message": "User created successfully"}
+
 
 # Protected video feed route
 @app.get('/video_feed')

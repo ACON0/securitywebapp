@@ -5,3 +5,5 @@ aiofiles
 python-multipart
 pyjwt
 passlib
+psycopg2-binary
+SQLAlchemy
