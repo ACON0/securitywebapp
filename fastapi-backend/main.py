@@ -15,6 +15,8 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your_default_secret_key")  # Fallback to d
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Keep this as a constant or make it an environment variable if needed
 
+
+
 app = FastAPI()
 
 # Password hashing context
